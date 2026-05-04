@@ -232,14 +232,14 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 클라이언트                   API 서버                    S3
    │                           │                          │
-   │── 업로드 URL 요청 ────────▶│                          │
+   │── 업로드 URL 요청 ────────▶  │                          │
    │                           │── Presigned URL 생성 ───▶│
    │                           │◀── URL 반환 ─────────────│
-   │◀── { uploadUrl, fileKey } ─│                          │
+   │◀── { uploadUrl, fileKey }─│                          │
    │                           │                          │
-   │─── PUT {uploadUrl} (파일 직접 업로드) ───────────────▶│
+   │─── PUT {uploadUrl} (파일 직접 업로드) ───────────────▶ . 
    │                           │                          │
-   │── 저장된 fileKey 전달 ────▶│                          │
+   │── 저장된 fileKey 전달 ────▶  │                          │
    │                           │── DB에 URL 저장          │
 ```
 
