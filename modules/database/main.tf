@@ -34,8 +34,9 @@ resource "aws_db_instance" "main" {
   backup_window           = "03:00-04:00" # 새벽 3시 (트래픽 적은 시간)
   maintenance_window      = "sun:04:00-sun:05:00"
 
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.project}-postgres-final-snapshot"
+  # 개발 환경 — destroy 시 스냅샷 없이 즉시 삭제
+  # 운영 전환 시: skip_final_snapshot = false 로 변경 후 final_snapshot_identifier 추가
+  skip_final_snapshot = true
 
   deletion_protection = false # 개발 단계에서는 비활성화, 운영 시 true로 변경
 

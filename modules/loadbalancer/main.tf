@@ -20,7 +20,7 @@ resource "aws_lb_target_group" "api" {
   target_type = "ip"
 
   health_check {
-    path                = "/health"
+    path                = "/api/health"
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2

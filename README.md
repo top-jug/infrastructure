@@ -74,6 +74,23 @@ RDS SG (VPC CIDR 내부 5432만 허용)
 
 ---
 
+## 인프라 요구사항 충족 현황
+
+| 요구사항 | 구현 위치 | 상태 |
+|----------|-----------|------|
+| ECS + ASG + EC2 Launch Type | `modules/compute` — Launch Template, ASG, Capacity Provider | ✅ |
+| ALB (HTTP → HTTPS 리다이렉트) | `modules/loadbalancer` — HTTP 리스너 (도메인 시 HTTPS 자동 전환) | ✅ |
+| Cloud Map으로 태스크 간 통신 | `modules/compute` — `redis.topjug.local:6379` 내부 DNS | ✅ |
+| Redis ECS 태스크로 운영 | `modules/compute` — `redis:7-alpine` 별도 ECS 서비스 | ✅ |
+| ECS inbound = ALB에서만 | `modules/networking` — ECS SG: ALB SG 소스 포트 3000만 허용 | ✅ |
+| ECS t4g.small(2GB) / medium(4GB) | `variables.tf` — `ec2_instance_type` 기본값 `t4g.small` | ✅ |
+| RDS PostgreSQL, Master/Slave 없음 | `modules/database` — Single AZ, no read replica | ✅ |
+| RDS 최저가 (db.t4g.micro) | `variables.tf` — `db_instance_class` 기본값 `db.t4g.micro` | ✅ |
+| RDS inbound = VPC 내부만 | `modules/networking` — RDS SG: `10.0.0.0/16` CIDR만 허용 | ✅ |
+| Secrets Manager | `modules/compute` — DB 비밀번호 Secret 생성, ECS Task ARN 참조 | ✅ |
+
+---
+
 ## 왜 이 아키텍처인가 (의사결정 기록)
 
 팀 논의에서 아래와 같은 **멀티리전 고가용성 아키텍처**가 참고 자료로 제시되었습니다.
@@ -98,6 +115,7 @@ MVP 단계에서 이 구조를 그대로 채택하지 않은 이유는 다음과
 | Secrets Manager | 있음 | 동일하게 채택 | DB 비밀번호 안전 보관 |
 | DynamoDB | 있음 | PostgreSQL | 이미 RDS 사용 중, 중복 불필요 |
 | RDS Master/Slave | 있음 | Single (no replica) | MVP 단계 비용 최소화 |
+| RDS 최종 스냅샷 | 운영에선 필수 | `skip_final_snapshot = true` | 개발 단계 — destroy 시 스냅샷 이름 충돌 방지 |
 
 **결론:** 현재 아키텍처는 초기 트래픽과 팀 규모에 맞게 비용을 최소화하면서도,  
 트래픽 증가 시 수직·수평 확장이 가능하도록 설계되었습니다.
@@ -164,11 +182,14 @@ cp terraform.tfvars.example terraform.tfvars
 terraform init
 
 # 네트워킹 먼저 (서브넷 count 의존성)
-terraform apply -target=module.networking
+terraform apply -lock=false -target=module.networking
 
 # 전체 배포
-terraform apply
+terraform apply -lock=false
 ```
+
+> **macOS 참고**: `com.apple.provenance` 확장 속성으로 인해 로컬 tfstate 파일 락 생성이 실패하는 경우가 있습니다.  
+> 로컬 single-developer 환경에서는 `-lock=false` 가 안전합니다. 팀 공유 시 S3 backend로 전환하면 이 문제가 사라집니다.
 
 ### 3. 배포 완료 후 출력값
 
@@ -186,29 +207,40 @@ terraform output
 > ⚠️ t4g는 ARM(Graviton2) 아키텍처입니다. 이미지를 반드시 `linux/arm64` 로 빌드해야 합니다.
 
 ```bash
+# ECR URL 확인
+ECR_URL=$(terraform output -raw ecr_api_url -lock=false)
+
 # ECR 로그인
 aws ecr get-login-password --region ap-northeast-2 \
-  | docker login --username AWS --password-stdin {ECR_URL}
+  | docker login --username AWS --password-stdin $ECR_URL
 
-# arm64 빌드
+# arm64 빌드 및 푸시
 docker buildx build --platform linux/arm64 \
-  -t {ECR_URL}/topjug-api:latest ./backend
+  -t $ECR_URL:latest ./backend
 
-docker push {ECR_URL}/topjug-api:latest
+docker push $ECR_URL:latest
 
-# ECS 서비스 재배포
+# ECS 서비스 재배포 (이미지 교체 후)
 aws ecs update-service \
   --cluster topjug-cluster \
   --service topjug-api \
-  --force-new-deployment
+  --force-new-deployment \
+  --region ap-northeast-2
 ```
 
-### 5. DB 초기화 (첫 배포 시 1회)
+**백엔드 팀 환경변수 참고** — ECS Task에 주입되는 환경변수:
 
-```sql
--- RDS 접속 후 실행
-CREATE EXTENSION IF NOT EXISTS postgis;
-```
+| 변수명 | 값 | 비고 |
+|--------|-----|------|
+| `DB_HOST` | RDS 엔드포인트 | Terraform이 자동 주입 |
+| `DB_PORT` | `5432` | |
+| `DB_NAME` | `topjug` | |
+| `DB_USER` | `topjug_admin` | |
+| `DB_PASSWORD` | Secrets Manager ARN 참조 | 평문 노출 없음 |
+| `REDIS_URL` | `redis://redis.topjug.local:6379` | Cloud Map 내부 DNS |
+| `PORT` | `3000` | |
+
+헬스체크 엔드포인트: `GET /api/health` → `{ status: "ok" }` 반드시 구현 필요
 
 ---
 

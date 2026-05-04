@@ -149,11 +149,11 @@ resource "aws_s3_bucket_policy" "frontend" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "AllowCloudFrontOAC"
-      Effect = "Allow"
+      Sid       = "AllowCloudFrontOAC"
+      Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
-      Action   = "s3:GetObject"
-      Resource = "arn:aws:s3:::${module.storage.bucket_id}/*"
+      Action    = "s3:GetObject"
+      Resource  = "arn:aws:s3:::${module.storage.bucket_id}/*"
       Condition = {
         StringEquals = {
           "AWS:SourceArn" = module.cdn.cloudfront_distribution_arn

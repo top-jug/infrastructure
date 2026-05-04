@@ -275,14 +275,14 @@ resource "aws_ecs_task_definition" "api" {
       portMappings = [{ containerPort = 3000, protocol = "tcp" }]
 
       environment = [
-        { name = "NODE_ENV", value = "production" },
-        { name = "PORT", value = "3000" },
-        { name = "DB_HOST", value = var.db_host },
-        { name = "DB_PORT", value = tostring(var.db_port) },
-        { name = "DB_NAME", value = var.db_name },
-        { name = "DB_USER", value = var.db_username },
-        { name = "REDIS_HOST", value = "redis.${var.project}.local" },
-        { name = "REDIS_PORT", value = "6379" },
+        { name = "NODE_ENV",   value = "production" },
+        { name = "PORT",       value = "3000" },
+        { name = "DB_HOST",    value = var.db_host },
+        { name = "DB_PORT",    value = tostring(var.db_port) },
+        { name = "DB_NAME",    value = var.db_name },
+        { name = "DB_USER",    value = var.db_username },
+        # REDIS_URL 형식으로 넘김 — 로컬 docker-compose와 동일한 환경변수 사용
+        { name = "REDIS_URL",  value = "redis://redis.${var.project}.local:6379" },
       ]
 
       secrets = [
@@ -300,7 +300,7 @@ resource "aws_ecs_task_definition" "api" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
