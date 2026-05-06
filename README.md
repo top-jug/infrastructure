@@ -277,6 +277,70 @@ aws ecs update-service \
 
 ---
 
+## 팀 협업 전환 가이드
+
+현재는 로컬 tfstate 기반 단독 운영 중입니다. 팀원이 합류하거나 공동 배포가 필요해지면 아래 순서로 전환합니다.
+
+### 1. S3 Backend 전환 (tfstate 공유)
+
+로컬 tfstate는 팀원 간 공유가 안 되고 동시 `apply` 시 충돌 위험이 있습니다.
+
+```bash
+# 1) tfstate 저장용 S3 버킷 생성 (최초 1회, 콘솔 또는 CLI)
+aws s3api create-bucket \
+  --bucket topjug-tfstate \
+  --region ap-northeast-2 \
+  --create-bucket-configuration LocationConstraint=ap-northeast-2
+
+# 버킷 버전 관리 활성화 (상태 파일 이력 보존)
+aws s3api put-bucket-versioning \
+  --bucket topjug-tfstate \
+  --versioning-configuration Status=Enabled
+
+# 2) main.tf 상단 backend 블록 주석 해제
+# backend "s3" {
+#   bucket = "topjug-tfstate"
+#   key    = "prod/terraform.tfstate"
+#   region = "ap-northeast-2"
+# }
+
+# 3) 기존 로컬 tfstate를 S3로 마이그레이션
+terraform init -migrate-state
+```
+
+전환 후에는 `-lock=false` 없이 `terraform apply` 가 정상 동작합니다.  
+S3 backend는 DynamoDB를 사용한 상태 잠금을 지원하므로 동시 apply 충돌도 방지됩니다.
+
+### 2. 팀원 온보딩 순서
+
+```bash
+# 1) 레포 클론
+git clone https://github.com/top-jug/infrastructure.git
+cd infrastructure
+
+# 2) 환경변수 파일 생성 (절대 커밋 금지)
+cp terraform.tfvars.example terraform.tfvars
+# → db_password 등 민감 값은 팀 내부 채널로 공유
+
+# 3) 초기화 (S3 backend 전환 후엔 자동으로 원격 tfstate 연결)
+terraform init
+
+# 4) 확인
+terraform plan
+```
+
+### 3. macOS 로컬 tfstate 잠금 오류 (S3 전환 전)
+
+S3 backend로 전환하기 전까지는 macOS의 파일시스템 정책으로 인해 로컬 tfstate 잠금 생성이 실패하는 경우가 있습니다.  
+단독 개발 환경에서는 아래 플래그를 사용합니다.
+
+```bash
+terraform apply -lock=false
+terraform destroy -lock=false
+```
+
+---
+
 ## 스케일업 가이드
 
 `terraform.tfvars` 에서 아래 값 변경 후 `terraform apply`:

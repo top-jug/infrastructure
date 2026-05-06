@@ -1,10 +1,17 @@
+# Terraform
 .terraform/
-.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
-terraform.tfvars       # DB 비밀번호 등 민감정보
-*.tfvars
-!*.tfvars.example      # example 파일은 커밋 허용
-crash.log
 .terraform.tfstate.lock.info
-*.pkg                  # AWS CLI 등 설치 파일
+crash.log
+
+# 민감정보 — 절대 커밋 금지
+terraform.tfvars
+*.tfvars
+!*.tfvars.example
+
+# 설치 파일
+*.pkg
+
+# .terraform.lock.hcl 은 의도적으로 커밋
+# 팀원 간 프로바이더 버전 고정을 위해 추적 대상에 포함
