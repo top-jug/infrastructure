@@ -202,7 +202,52 @@ terraform output
 # uploads_bucket_name = "topjug-uploads-xxxx"
 ```
 
-### 4. API 이미지 빌드 및 ECR 푸시
+### 4. 프론트엔드 배포 (프론트엔드 팀)
+
+#### CloudFront 라우팅 구조
+
+```
+https://d3r3hoc83axmsq.cloudfront.net/
+├── /*          → S3 (정적 파일 — HTML, JS, CSS, 이미지)
+└── /api/*      → ALB → ECS API 서버
+```
+
+**API 호출은 반드시 상대경로로 작성해야 합니다.**
+
+```js
+// ❌ 절대경로 — 로컬에서만 동작, 배포 시 CORS 오류
+fetch('http://localhost:3000/api/gyms')
+
+// ✅ 상대경로 — CloudFront가 /api/* 를 ALB로 자동 라우팅
+fetch('/api/gyms')
+```
+
+#### S3 배포
+
+```bash
+# 빌드
+npm run build
+
+# S3 업로드 (로컬 파일과 S3 동기화, 삭제된 파일도 반영)
+aws s3 sync ./dist s3://topjug-frontend-10dab119 --delete
+
+# CloudFront 캐시 무효화 (새 버전 즉시 반영, 최대 15분 소요)
+DISTRIBUTION_ID=$(aws cloudfront list-distributions \
+  --query "DistributionList.Items[?Origins.Items[?DomainName=='topjug-frontend-10dab119.s3.ap-northeast-2.amazonaws.com']].Id" \
+  --output text)
+
+aws cloudfront create-invalidation \
+  --distribution-id $DISTRIBUTION_ID \
+  --paths "/*"
+```
+
+> **현재 CloudFront 도메인**: `d3r3hoc83axmsq.cloudfront.net`  
+> **S3 버킷**: `topjug-frontend-10dab119`  
+> 도메인 연결 후에는 커스텀 도메인으로 대체됩니다.
+
+---
+
+### 5. API 이미지 빌드 및 ECR 푸시 (백엔드 팀)
 
 > ⚠️ t4g는 ARM(Graviton2) 아키텍처입니다. 이미지를 반드시 `linux/arm64` 로 빌드해야 합니다.
 
